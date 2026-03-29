@@ -12,7 +12,8 @@ using Polyester
 end
 
 Base.@propagate_inbounds function FastBroadcast.fast_materialize_threaded(
-        bc::Broadcasted{S}) where {S}
+        bc::Broadcasted{S}
+    ) where {S}
     if S === Base.Broadcast.DefaultArrayStyle{0}
         return only(bc)
     elseif S <: Base.Broadcast.DefaultArrayStyle

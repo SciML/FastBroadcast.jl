@@ -6,7 +6,6 @@ using Base.Broadcast: Broadcasted, materialize, materialize!
 using ArrayInterface: indices_do_not_alias, flatten_tuples
 using StaticArrayInterface: static_axes, static_length
 using LinearAlgebra: Adjoint, Transpose
-using Polyester
 
 export @..
 
@@ -159,6 +158,10 @@ end
 
 fast_materialize!(_, _, dst, x) = dst .= x
 
+# Runtime threading dispatch: true means threaded (Polyester), false means serial
+fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize_threaded!(dst, bc) : fast_materialize!(dst, bc)
+fast_materialize(t::Bool, bc) = t ? fast_materialize_threaded(bc) : fast_materialize(bc)
+
 Base.@propagate_inbounds function fast_materialize(
         bc::Broadcasted{S}) where {S}
     if S === Base.Broadcast.DefaultArrayStyle{0}
@@ -203,38 +206,28 @@ end
 @inline _view(bc::Base.Broadcast.Broadcasted{<:Base.Broadcast.AbstractArrayStyle}, _, ::Val{N}) where {N} = bc
 @inline _view(t::Tuple{Vararg{AbstractRange, N}}, r, ::Val{N}) where {N} = (Base.front(t)..., r)
 
-@inline function _batch_broadcast_fn(tup, start, stop)
-    (dest, ldstaxes, bcobj, VN) = tup
-    r = @inbounds ldstaxes[start:stop]
-    fast_materialize!(_view(dest, r, VN), _view(bcobj, r, VN))
-    return nothing
+"""
+    fast_materialize_threaded(bc)
+
+Threaded version of `fast_materialize`. Requires the Polyester.jl package to be loaded
+(which activates the FastBroadcastPolyesterExt extension).
+"""
+function fast_materialize_threaded end
+
+"""
+    fast_materialize_threaded!(dst, bc)
+
+Threaded in-place version of `fast_materialize!`. Requires the Polyester.jl package
+to be loaded (which activates the FastBroadcastPolyesterExt extension).
+"""
+function fast_materialize_threaded! end
+
+function _throw_polyester_not_loaded()
+    error("Threaded broadcasting requires Polyester.jl to be loaded. Add `using Polyester` to your code.")
 end
-Base.@propagate_inbounds function fast_materialize_threaded(
-        bc::Broadcasted{S}) where {S}
-    if S === Base.Broadcast.DefaultArrayStyle{0}
-        return only(bc)
-    elseif S <: Base.Broadcast.DefaultArrayStyle
-        fast_materialize_threaded!(
-            similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
-            bc
-        )
-    else
-        materialize(bc)
-    end
-end
-function fast_materialize_threaded!(dst,bc::Broadcasted)
-    dstaxes = axes(dst)
-    last_dstaxes = dstaxes[end]
-    Polyester.batch(
-        _batch_broadcast_fn,
-        (length(last_dstaxes), Threads.nthreads()),
-        dst,
-        last_dstaxes,
-        bc,
-        Val(length(dstaxes))
-    )
-    return dst
-end
+fast_materialize_threaded(bc::Broadcasted) = _throw_polyester_not_loaded()
+fast_materialize_threaded!(dst, bc::Broadcasted) = _throw_polyester_not_loaded()
+
 
 _dim0(_) = false
 _dim0(::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}}) = true
@@ -335,10 +328,14 @@ function _fb_macro!(ex::Expr, threadarg, broadcastarg)
         ex.head = :call
         if broadcastarg
             pushfirst!(ex.args, materialize!)
-        elseif threadarg
+        elseif threadarg === true
             pushfirst!(ex.args, fast_materialize_threaded!)
-        else
+        elseif threadarg === false
             pushfirst!(ex.args, fast_materialize!)
+        else
+            # Runtime threading variable: dispatch via fast_materialize!(threadval, dst, bc)
+            pushfirst!(ex.args, fast_materialize!)
+            insert!(ex.args, 2, threadarg)
         end
         a4 = ex.args[end]
         if Meta.isexpr(a4, :ref)
@@ -396,10 +393,14 @@ function fb_macro!(ex::Expr, threadarg, broadcastarg)
         ex = Expr(:call, ex)
         if broadcastarg
             pushfirst!(ex.args, materialize)
-        elseif threadarg
+        elseif threadarg === true
             pushfirst!(ex.args, fast_materialize_threaded)
-        else
+        elseif threadarg === false
             pushfirst!(ex.args, fast_materialize)
+        else
+            # Runtime threading variable: dispatch via fast_materialize(threadval, bc)
+            pushfirst!(ex.args, fast_materialize)
+            insert!(ex.args, 2, threadarg)
         end
     end
     esc(ex)
@@ -411,7 +412,8 @@ end
 `@..` turns `expr` into a broadcast-like expression, similar to `@.`.
 It additionally provides two optional keyword arguments:
 
-- thread: Defaults to `false`. Use multithreading? This only works if broadcast=false.
+- thread: Defaults to `false`. Use Polyester-based multithreading? Requires `using Polyester`.
+    This only works if broadcast=false.
 - broadcast: Defaults to `false`. If `true`, it will broadcast axes with dynamic
     runtime sizes of `1` to larger sizes, if `false` only sizes known to be `1`
     at compile time will be supported, i.e. axes such that

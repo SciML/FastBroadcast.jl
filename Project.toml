@@ -1,13 +1,18 @@
 name = "FastBroadcast"
 uuid = "7034ab61-46d4-4ed7-9d0f-46aef9175898"
-authors = ["Yingbo Ma <mayingbo5@gmail.com> and Chris Elrod <elrodc@gmail.com>"]
 version = "0.4.0"
+authors = ["Yingbo Ma <mayingbo5@gmail.com> and Chris Elrod <elrodc@gmail.com>"]
 
 [deps]
 ArrayInterface = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-Polyester = "f517fe37-dbe3-4b94-8317-1923a5111588"
 StaticArrayInterface = "0d7ed370-da01-4f52-bd93-41d350b8b718"
+
+[weakdeps]
+Polyester = "f517fe37-dbe3-4b94-8317-1923a5111588"
+
+[extensions]
+FastBroadcastPolyesterExt = "Polyester"
 
 [compat]
 ArrayInterface = "7"
@@ -18,9 +23,10 @@ julia = "1.8"
 [extras]
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 MuladdMacro = "46d2c3a1-f734-5fdb-9937-b9b9aeba4221"
+Polyester = "f517fe37-dbe3-4b94-8317-1923a5111588"
 PerformanceTestTools = "dc46b164-d16f-48ec-a853-60448fc869fe"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["InteractiveUtils", "MuladdMacro", "PerformanceTestTools", "SparseArrays", "Test"]
+test = ["InteractiveUtils", "MuladdMacro", "PerformanceTestTools", "Polyester", "SparseArrays", "Test"]

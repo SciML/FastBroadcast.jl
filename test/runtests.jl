@@ -128,18 +128,8 @@ if GROUP == "All" || GROUP == "Core"
 
     @testset "Runtime threading dispatch" begin
       x2, y2 = [1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]
-      dst_seq = similar(x2)
-      dst_poly = similar(x2)
-      dst_bool_f = similar(x2)
-      dst_bool_t = similar(x2)
       expected = @. x2 + y2
-      # Direct type dispatch
-      @.. thread = false dst_seq = x2 + y2
-      @test dst_seq == expected
-      @.. thread = true dst_poly = x2 + y2
-      @test dst_poly == expected
-      # Runtime variable dispatch
-      for threadopt in (FastBroadcast.Sequential(), FastBroadcast.PolyesterThreads(), false, true)
+      for threadopt in (false, true)
         dst_rt = similar(x2)
         @.. thread = threadopt dst_rt = x2 + y2
         @test dst_rt == expected

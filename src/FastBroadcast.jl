@@ -10,21 +10,6 @@ using Polyester
 
 export @..
 
-"""
-    Sequential
-
-Threading option type indicating no threading should be used for broadcasts.
-This is the default.
-"""
-struct Sequential end
-
-"""
-    PolyesterThreads
-
-Threading option type indicating Polyester-based threading should be used for broadcasts.
-"""
-struct PolyesterThreads end
-
 @inline function to_tup(::Val{M}, i::CartesianIndex{N}) where {M, N}
     if M < N
         ntuple(Fix1(getindex, Tuple(i)), Val(M))
@@ -174,13 +159,9 @@ end
 
 fast_materialize!(_, _, dst, x) = dst .= x
 
-# Runtime-dispatched threading variants
-fast_materialize!(::Sequential, dst, bc) = fast_materialize!(dst, bc)
-fast_materialize(::Sequential, bc) = fast_materialize(bc)
-
-# Bool backwards compat: true means PolyesterThreads, false means Sequential
-fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize!(PolyesterThreads(), dst, bc) : fast_materialize!(dst, bc)
-fast_materialize(t::Bool, bc) = t ? fast_materialize(PolyesterThreads(), bc) : fast_materialize(bc)
+# Runtime threading dispatch: true means threaded (Polyester), false means serial
+fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize_threaded!(dst, bc) : fast_materialize!(dst, bc)
+fast_materialize(t::Bool, bc) = t ? fast_materialize_threaded(bc) : fast_materialize(bc)
 
 Base.@propagate_inbounds function fast_materialize(
         bc::Broadcasted{S}) where {S}
@@ -259,8 +240,6 @@ function fast_materialize_threaded!(dst,bc::Broadcasted)
     return dst
 end
 
-fast_materialize!(::PolyesterThreads, dst, bc) = fast_materialize_threaded!(dst, bc)
-fast_materialize(::PolyesterThreads, bc) = fast_materialize_threaded(bc)
 
 _dim0(_) = false
 _dim0(::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}}) = true

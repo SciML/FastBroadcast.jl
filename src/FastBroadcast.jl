@@ -6,7 +6,6 @@ using Base.Broadcast: Broadcasted, materialize, materialize!
 using ArrayInterface: indices_do_not_alias, flatten_tuples
 using StaticArrayInterface: static_axes, static_length
 using LinearAlgebra: Adjoint, Transpose
-using Polyester
 
 export @..
 
@@ -207,38 +206,8 @@ end
 @inline _view(bc::Base.Broadcast.Broadcasted{<:Base.Broadcast.AbstractArrayStyle}, _, ::Val{N}) where {N} = bc
 @inline _view(t::Tuple{Vararg{AbstractRange, N}}, r, ::Val{N}) where {N} = (Base.front(t)..., r)
 
-@inline function _batch_broadcast_fn(tup, start, stop)
-    (dest, ldstaxes, bcobj, VN) = tup
-    r = @inbounds ldstaxes[start:stop]
-    fast_materialize!(_view(dest, r, VN), _view(bcobj, r, VN))
-    return nothing
-end
-Base.@propagate_inbounds function fast_materialize_threaded(
-        bc::Broadcasted{S}) where {S}
-    if S === Base.Broadcast.DefaultArrayStyle{0}
-        return only(bc)
-    elseif S <: Base.Broadcast.DefaultArrayStyle
-        fast_materialize_threaded!(
-            similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
-            bc
-        )
-    else
-        materialize(bc)
-    end
-end
-function fast_materialize_threaded!(dst,bc::Broadcasted)
-    dstaxes = axes(dst)
-    last_dstaxes = dstaxes[end]
-    Polyester.batch(
-        _batch_broadcast_fn,
-        (length(last_dstaxes), Threads.nthreads()),
-        dst,
-        last_dstaxes,
-        bc,
-        Val(length(dstaxes))
-    )
-    return dst
-end
+function fast_materialize_threaded end
+function fast_materialize_threaded! end
 
 
 _dim0(_) = false

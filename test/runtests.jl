@@ -1,4 +1,5 @@
 using FastBroadcast
+using Polyester  # loads FastBroadcastPolyesterExt
 using SparseArrays
 using PerformanceTestTools, Test
 

@@ -206,8 +206,27 @@ end
 @inline _view(bc::Base.Broadcast.Broadcasted{<:Base.Broadcast.AbstractArrayStyle}, _, ::Val{N}) where {N} = bc
 @inline _view(t::Tuple{Vararg{AbstractRange, N}}, r, ::Val{N}) where {N} = (Base.front(t)..., r)
 
+"""
+    fast_materialize_threaded(bc)
+
+Threaded version of `fast_materialize`. Requires the Polyester.jl package to be loaded
+(which activates the FastBroadcastPolyesterExt extension).
+"""
 function fast_materialize_threaded end
+
+"""
+    fast_materialize_threaded!(dst, bc)
+
+Threaded in-place version of `fast_materialize!`. Requires the Polyester.jl package
+to be loaded (which activates the FastBroadcastPolyesterExt extension).
+"""
 function fast_materialize_threaded! end
+
+function _throw_polyester_not_loaded()
+    error("Threaded broadcasting requires Polyester.jl to be loaded. Add `using Polyester` to your code.")
+end
+fast_materialize_threaded(bc::Broadcasted) = _throw_polyester_not_loaded()
+fast_materialize_threaded!(dst, bc::Broadcasted) = _throw_polyester_not_loaded()
 
 
 _dim0(_) = false
@@ -393,7 +412,8 @@ end
 `@..` turns `expr` into a broadcast-like expression, similar to `@.`.
 It additionally provides two optional keyword arguments:
 
-- thread: Defaults to `false`. Use multithreading? This only works if broadcast=false.
+- thread: Defaults to `false`. Use Polyester-based multithreading? Requires `using Polyester`.
+    This only works if broadcast=false.
 - broadcast: Defaults to `false`. If `true`, it will broadcast axes with dynamic
     runtime sizes of `1` to larger sizes, if `false` only sizes known to be `1`
     at compile time will be supported, i.e. axes such that

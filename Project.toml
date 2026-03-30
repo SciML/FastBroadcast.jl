@@ -16,7 +16,7 @@ FastBroadcastPolyesterExt = "Polyester"
 [compat]
 ArrayInterface = "7"
 Polyester = "0.5, 0.6, 0.7"
-julia = "1.8"
+julia = "1.10"
 
 [extras]
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"

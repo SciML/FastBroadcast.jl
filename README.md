@@ -46,12 +46,14 @@ julia> @btime fast_foo9($a, $b, $c, $d, $e, $f, $g, $h, $i);
   131.470 μs (0 allocations: 0 bytes)
 ```
 
-The macro `@..` of FastBroadcast.jl accepts a keyword argument `thread` 
-determining whether the broadcast call should use threading (disabled
-by default). You can use it as follows (starting Julia with multiple 
-threads).
+## Threading
+
+The macro `@..` accepts a keyword argument `thread` to control whether the
+broadcast should use multithreading via [Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl)
+(disabled by default). Start Julia with multiple threads to benefit from this.
+
 ```julia
-julia> using FastBroadcast
+julia> using FastBroadcast, Polyester
 
 julia> function foo_serial!(dest, src)
            @.. thread=false dest = log(src)
@@ -63,11 +65,6 @@ julia> function foo_parallel!(dest, src)
        end
 foo_parallel! (generic function with 1 method)
 
-julia> function foo_maybe_parallel!(dest, src, thread)
-           @.. thread=thread dest = log(src)
-       end
-foo_maybe_parallel! (generic function with 1 method)
-
 julia> src = rand(10^4); dest = similar(src);
 
 julia> @btime foo_serial!($dest, $src);
@@ -75,10 +72,23 @@ julia> @btime foo_serial!($dest, $src);
 
 julia> @btime foo_parallel!($dest, $src);
   17.245 μs (1 allocation: 48 bytes)
+```
 
-julia> @btime foo_maybe_parallel!($dest, $src, $FastBroadcast.False());
+The `thread` argument accepts `true`/`false` or the exported types
+`Serial()`/`Threaded()`. When the threading choice is stored in a
+type-parameterized struct (e.g. an algorithm configuration), using
+`Serial()`/`Threaded()` enables compile-time dispatch and avoids
+invalidations when Polyester is loaded:
+
+```julia
+julia> function foo_maybe_parallel!(dest, src, thread)
+           @.. thread=thread dest = log(src)
+       end
+foo_maybe_parallel! (generic function with 1 method)
+
+julia> @btime foo_maybe_parallel!($dest, $src, $(Serial()));
   51.682 μs (0 allocations: 0 bytes)
 
-julia> @btime foo_maybe_parallel!($dest, $src, $FastBroadcast.True());
+julia> @btime foo_maybe_parallel!($dest, $src, $(Threaded()));
   17.360 μs (1 allocation: 48 bytes)
 ```

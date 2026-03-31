@@ -6,7 +6,26 @@ using Base.Broadcast: Broadcasted, materialize, materialize!
 using ArrayInterface: indices_do_not_alias, flatten_tuples
 using LinearAlgebra: Adjoint, Transpose
 
-export @..
+export @.., Threaded, Serial
+
+"""
+    Threaded()
+
+Threading dispatch type for `@..`. When passed as `thread = Threaded()`,
+enables Polyester-based multithreaded broadcasting. Using a type instead of
+`true` allows compile-time dispatch and prevents invalidations when
+Polyester is loaded (the `Serial` code path never references threaded methods).
+"""
+struct Threaded end
+
+"""
+    Serial()
+
+Threading dispatch type for `@..`. When passed as `thread = Serial()`,
+uses serial broadcasting (the default). Using a type instead of `false`
+allows compile-time dispatch.
+"""
+struct Serial end
 
 @inline function to_tup(::Val{M}, i::CartesianIndex{N}) where {M, N}
     return if M < N
@@ -159,9 +178,17 @@ end
 
 fast_materialize!(_, _, dst, x) = dst .= x
 
-# Runtime threading dispatch: true means threaded (Polyester), false means serial
-fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize_threaded!(dst, bc) : fast_materialize!(dst, bc)
-fast_materialize(t::Bool, bc) = t ? fast_materialize_threaded(bc) : fast_materialize(bc)
+# Type-based threading dispatch: compile-time elimination, no invalidations from Polyester loading.
+# The Serial path never references fast_materialize_threaded!, so loading Polyester
+# cannot invalidate any code compiled via the Serial path.
+fast_materialize!(::Serial, dst, bc) = fast_materialize!(dst, bc)
+fast_materialize!(::Threaded, dst, bc) = fast_materialize_threaded!(dst, bc)
+fast_materialize(::Serial, bc) = fast_materialize(bc)
+fast_materialize(::Threaded, bc) = fast_materialize_threaded(bc)
+
+# Bool backward compat: runtime branch
+fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize!(Threaded(), dst, bc) : fast_materialize!(Serial(), dst, bc)
+fast_materialize(t::Bool, bc) = t ? fast_materialize(Threaded(), bc) : fast_materialize(Serial(), bc)
 
 Base.@propagate_inbounds function fast_materialize(
         bc::Broadcasted{S}
@@ -227,11 +254,6 @@ to be loaded (which activates the FastBroadcastPolyesterExt extension).
 """
 function fast_materialize_threaded! end
 
-function _throw_polyester_not_loaded()
-    error("Threaded broadcasting requires Polyester.jl to be loaded. Add `using Polyester` to your code.")
-end
-fast_materialize_threaded(bc::Broadcasted) = _throw_polyester_not_loaded()
-fast_materialize_threaded!(dst, bc::Broadcasted) = _throw_polyester_not_loaded()
 
 
 _dim0(_) = false
@@ -418,7 +440,11 @@ end
 `@..` turns `expr` into a broadcast-like expression, similar to `@.`.
 It additionally provides two optional keyword arguments:
 
-- thread: Defaults to `false`. Use Polyester-based multithreading? Requires `using Polyester`.
+- thread: Defaults to `false`. Controls multithreading via Polyester.jl.
+    Accepts `Serial()`, `Threaded()`, `false`, or `true`. Using the type-based
+    `Serial()`/`Threaded()` is preferred as it enables compile-time dispatch and
+    avoids invalidations when Polyester is loaded. Requires `using Polyester`
+    for threaded execution.
     This only works if broadcast=false.
 - broadcast: Defaults to `false`. If `true`, it will broadcast axes with dynamic
     runtime sizes of `1` to larger sizes, if `false` only sizes known to be `1`

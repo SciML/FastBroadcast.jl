@@ -175,13 +175,16 @@ function fast_materialize!(dst, x::AbstractArray)
     Base.Broadcast.check_broadcast_shape(size(dst), size(x))
     return copyto!(dst, x)
 end
-
 fast_materialize!(_, _, dst, x) = dst .= x
 
 # Type-based threading dispatch: compile-time elimination, no invalidations from Polyester loading.
 # The Serial path never references fast_materialize_threaded!, so loading Polyester
 # cannot invalidate any code compiled via the Serial path.
-fast_materialize!(::Serial, dst, bc) = fast_materialize!(dst, bc)
+fast_materialize!(::Serial, dst, bc::Broadcasted) = fast_materialize!(dst, bc)
+fast_materialize!(::Serial, dst, x::AbstractArray) = fast_materialize!(dst, x)
+fast_materialize!(::Serial, dst, x::Number) = fast_materialize!(dst, x)
+# Fallback for non-AbstractArray types (e.g. RecursiveArrayTools.VectorOfArray)
+fast_materialize!(::Serial, dst, x) = dst .= x
 fast_materialize!(::Threaded, dst, bc) = fast_materialize_threaded!(dst, bc)
 fast_materialize(::Serial, bc) = fast_materialize(bc)
 fast_materialize(::Threaded, bc) = fast_materialize_threaded(bc)

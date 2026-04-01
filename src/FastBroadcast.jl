@@ -211,9 +211,12 @@ Base.@propagate_inbounds function fast_materialize(
 end
 fast_materialize(::Serial, @nospecialize(x)) = x
 
-# Threaded dispatch — delegates to extension-defined methods
-@inline fast_materialize!(::Threaded, dst, bc) = fast_materialize_threaded!(dst, bc)
-@inline fast_materialize(::Threaded, bc) = fast_materialize_threaded(bc)
+# Threaded dispatch — delegates to extension-defined methods for Broadcasted,
+# falls back to serial for non-broadcast assignments (threading overhead not worth it)
+@inline fast_materialize!(::Threaded, dst, bc::Broadcasted) = fast_materialize_threaded!(dst, bc)
+@inline fast_materialize!(::Threaded, dst, x) = dst .= x
+@inline fast_materialize(::Threaded, bc::Broadcasted) = fast_materialize_threaded(bc)
+@inline fast_materialize(::Threaded, x) = x
 
 # Bool backward compat: runtime branch
 fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize!(Threaded(), dst, bc) : fast_materialize!(Serial(), dst, bc)

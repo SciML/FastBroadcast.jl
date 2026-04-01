@@ -1,13 +1,13 @@
 module FastBroadcastPolyesterExt
 
-using FastBroadcast: FastBroadcast, fast_materialize!, _view
+using FastBroadcast: FastBroadcast, Serial, fast_materialize!, _view
 using Base.Broadcast: Broadcasted, materialize
 using Polyester
 
 @inline function _batch_broadcast_fn(tup, start, stop)
     (dest, ldstaxes, bcobj, VN) = tup
     r = @inbounds ldstaxes[start:stop]
-    fast_materialize!(_view(dest, r, VN), _view(bcobj, r, VN))
+    fast_materialize!(Serial(), _view(dest, r, VN), _view(bcobj, r, VN))
     return nothing
 end
 

@@ -22,6 +22,7 @@ if GROUP == "All" || GROUP == "Core"
             bc,
         ) == bcref
         @test FastBroadcast.fast_materialize!(
+            FastBroadcast.Serial(),
             dst,
             bc,
         ) == bcref

@@ -170,48 +170,20 @@ use_fast_broadcast(_) = false
 use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle}) = true
 use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle{0}}) = false
 
-fast_materialize!(dst, x::Number) = fill!(dst, x)
-function fast_materialize!(dst, x::AbstractArray)
+# Legacy 4-arg fallback (old API compat)
+fast_materialize!(_, _, dst, x) = dst .= x
+
+# Serial dispatch — the primary path. Never references fast_materialize_threaded!,
+# so loading Polyester cannot invalidate any code compiled via Serial.
+@inline fast_materialize!(::Serial, dst, x::Number) = fill!(dst, x)
+@inline function fast_materialize!(::Serial, dst, x::AbstractArray)
     Base.Broadcast.check_broadcast_shape(size(dst), size(x))
     return copyto!(dst, x)
 end
-fast_materialize!(_, _, dst, x) = dst .= x
-
-# Type-based threading dispatch: compile-time elimination, no invalidations from Polyester loading.
-# The Serial path never references fast_materialize_threaded!, so loading Polyester
-# cannot invalidate any code compiled via the Serial path.
-fast_materialize!(::Serial, dst, bc::Broadcasted) = fast_materialize!(dst, bc)
-fast_materialize!(::Serial, dst, x::AbstractArray) = fast_materialize!(dst, x)
-fast_materialize!(::Serial, dst, x::Number) = fast_materialize!(dst, x)
-# Fallback for non-AbstractArray types (e.g. RecursiveArrayTools.VectorOfArray)
-fast_materialize!(::Serial, dst, x) = dst .= x
-fast_materialize!(::Threaded, dst, bc) = fast_materialize_threaded!(dst, bc)
-fast_materialize(::Serial, bc) = fast_materialize(bc)
-fast_materialize(::Threaded, bc) = fast_materialize_threaded(bc)
-
-# Bool backward compat: runtime branch
-fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize!(Threaded(), dst, bc) : fast_materialize!(Serial(), dst, bc)
-fast_materialize(t::Bool, bc) = t ? fast_materialize(Threaded(), bc) : fast_materialize(Serial(), bc)
-
-Base.@propagate_inbounds function fast_materialize(
-        bc::Broadcasted{S}
-    ) where {S}
-    if S === Base.Broadcast.DefaultArrayStyle{0}
-        return only(bc)
-    elseif S <: Base.Broadcast.DefaultArrayStyle
-        fast_materialize!(
-            similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
-            bc
-        )
-    else
-        materialize(bc)
-    end
-end
-
-fast_materialize(@nospecialize(x)) = x
+@inline fast_materialize!(::Serial, dst, x) = dst .= x
 
 Base.@propagate_inbounds function fast_materialize!(
-        dst::A, bc::Broadcasted{S}
+        ::Serial, dst::A, bc::Broadcasted{S}
     ) where {S, A}
     return if S === Base.Broadcast.DefaultArrayStyle{0}
         fill!(dst, bc[1])
@@ -221,6 +193,32 @@ Base.@propagate_inbounds function fast_materialize!(
         materialize!(dst, bc)
     end
 end
+
+Base.@propagate_inbounds function fast_materialize(
+        ::Serial, bc::Broadcasted{S}
+    ) where {S}
+    if S === Base.Broadcast.DefaultArrayStyle{0}
+        return only(bc)
+    elseif S <: Base.Broadcast.DefaultArrayStyle
+        fast_materialize!(
+            Serial(),
+            similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
+            bc
+        )
+    else
+        materialize(bc)
+    end
+end
+fast_materialize(::Serial, @nospecialize(x)) = x
+
+# Threaded dispatch — delegates to extension-defined methods
+@inline fast_materialize!(::Threaded, dst, bc) = fast_materialize_threaded!(dst, bc)
+@inline fast_materialize(::Threaded, bc) = fast_materialize_threaded(bc)
+
+# Bool backward compat: runtime branch
+fast_materialize!(t::Bool, dst, bc) = t ? fast_materialize!(Threaded(), dst, bc) : fast_materialize!(Serial(), dst, bc)
+fast_materialize(t::Bool, bc) = t ? fast_materialize(Threaded(), bc) : fast_materialize(Serial(), bc)
+
 
 @inline _view(A::AbstractArray{<:Any, N}, r, ::Val{N}) where {N} = view(
     A, ntuple(_ -> :, N - 1)..., r
@@ -359,9 +357,11 @@ function _fb_macro!(ex::Expr, threadarg, broadcastarg)
         if broadcastarg
             pushfirst!(ex.args, materialize!)
         elseif threadarg === true
-            pushfirst!(ex.args, fast_materialize_threaded!)
+            pushfirst!(ex.args, fast_materialize!)
+            insert!(ex.args, 2, Threaded())
         elseif threadarg === false
             pushfirst!(ex.args, fast_materialize!)
+            insert!(ex.args, 2, Serial())
         else
             # Runtime threading variable: dispatch via fast_materialize!(threadval, dst, bc)
             pushfirst!(ex.args, fast_materialize!)
@@ -425,9 +425,11 @@ function fb_macro!(ex::Expr, threadarg, broadcastarg)
         if broadcastarg
             pushfirst!(ex.args, materialize)
         elseif threadarg === true
-            pushfirst!(ex.args, fast_materialize_threaded)
+            pushfirst!(ex.args, fast_materialize)
+            insert!(ex.args, 2, Threaded())
         elseif threadarg === false
             pushfirst!(ex.args, fast_materialize)
+            insert!(ex.args, 2, Serial())
         else
             # Runtime threading variable: dispatch via fast_materialize(threadval, bc)
             pushfirst!(ex.args, fast_materialize)

@@ -373,7 +373,14 @@ function _fb_macro!(ex::Expr, threadarg, broadcastarg)
         a4 = ex.args[end]
         if Meta.isexpr(a4, :ref)
             _view!(a4)
-            skip = 4
+            # Also wrap a `:ref` LHS in `@views` so fancy/range indexed assignment
+            # writes to the underlying array. Otherwise `temp[diff] = data[diff]`
+            # passes a `getindex` copy as dst and silently drops the write.
+            a3 = ex.args[end - 1]
+            if Meta.isexpr(a3, :ref)
+                _view!(a3)
+            end
+            skip = length(ex.args)
         end
     elseif Meta.isexpr(ex, :($), 1)
         if (exarg = only(ex.args); exarg isa Expr)

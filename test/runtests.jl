@@ -85,6 +85,14 @@ if GROUP == "All" || GROUP == "Core"
         @test r == [5, 6, 25, 35]
         @test (@.. r + r[end]) == [40, 41, 60, 70]
 
+        # Issue #89: fancy indexing on LHS must write through (not silently copy).
+        let temp = [0.0, 0.0], data = [1.0, 1.0]
+            @.. temp[[2]] = data[[2]]
+            @test temp == [0.0, 1.0]
+            @.. temp[[1]] = data[[1]]
+            @test temp == [1.0, 1.0]
+        end
+
         let
             @.. x = y
             @test x == y

@@ -258,6 +258,21 @@ to be loaded (which activates the FastBroadcastPolyesterExt extension).
 """
 function fast_materialize_threaded! end
 
+function __init__()
+    return Base.Experimental.register_error_hint(MethodError) do io, exc, _argtypes, _kwargs
+        if exc.f === fast_materialize_threaded || exc.f === fast_materialize_threaded!
+            if Base.get_extension(@__MODULE__, :FastBroadcastPolyesterExt) === nothing
+                print(
+                    io,
+                    "\n\n`@.. thread=true` (and `FastBroadcast.fast_materialize_threaded`/",
+                    "`fast_materialize_threaded!`) requires the Polyester.jl package to be loaded. ",
+                    "Run `using Polyester` (or `import Polyester`) to load the ",
+                    "FastBroadcastPolyesterExt extension."
+                )
+            end
+        end
+    end
+end
 
 
 _dim0(_) = false

@@ -1,2 +1,5 @@
 [deps]
 DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
+
+[compat]
+DiffEqBase = "7.5.4"

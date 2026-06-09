@@ -193,3 +193,7 @@ end
 if GROUP == "Downstream"
     activate_downstream_env()
 end
+
+if GROUP == "QA"
+    include(joinpath(@__DIR__, "qa", "qa.jl"))
+end

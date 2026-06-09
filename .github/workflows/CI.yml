@@ -7,15 +7,6 @@ on:
     branches:
       - master
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 'lts'
-          - '1'
-          - 'pre'
-    uses: "SciML/.github/.github/workflows/tests.yml@v1"
-    with:
-      julia-version: "${{ matrix.version }}"
+  tests:
+    uses: "SciML/.github/.github/workflows/grouped-tests.yml@v1"
     secrets: "inherit"

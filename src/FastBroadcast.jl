@@ -1,6 +1,6 @@
 module FastBroadcast
 
-using Base: @propagate_inbounds, Fix1, Fix2
+using Base: Fix1
 using Base.Broadcast: Broadcasted, materialize, materialize!
 
 using ArrayInterface: indices_do_not_alias, flatten_tuples

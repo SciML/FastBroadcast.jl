@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+FastBroadcast = "7034ab61-46d4-4ed7-9d0f-46aef9175898"
+
+[compat]
+Documenter = "1"

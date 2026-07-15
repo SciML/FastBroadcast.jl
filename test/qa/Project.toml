@@ -11,6 +11,6 @@ FastBroadcast = {path = "../.."}
 [compat]
 Aqua = "0.8"
 SafeTestsets = "0.1, 1"
-SciMLTesting = "1.5"
+SciMLTesting = "1.5, 2.1"
 Test = "1"
 julia = "1.10"

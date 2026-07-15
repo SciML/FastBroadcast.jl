@@ -12,7 +12,7 @@ jobs:
       matrix:
         julia-version: ['1']
         package:
-          - {user: SciML, repo: OrdinaryDiffEq.jl, subdir: lib/DiffEqBase, group: All}
+          - {user: SciML, repo: OrdinaryDiffEq.jl, subdir: lib/DiffEqBase, group: ALL}
     uses: "SciML/.github/.github/workflows/downstream.yml@v1"
     with:
       julia-version: "${{ matrix.julia-version }}"

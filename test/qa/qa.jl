@@ -40,6 +40,12 @@ const EI_KWARGS = (;
         aqua_kwargs = (; deps_compat = false),
         explicit_imports = true,
         ei_kwargs = EI_KWARGS,
+        api_docs_kwargs = (;
+            rendered = true,
+            # `@..` is rendered in docs/src/api.md, but SciMLTesting parses it as
+            # Symbol("") because the macro name itself ends in dots.
+            rendered_ignore = (Symbol("@.."),),
+        ),
     )
     @test_broken false  # Aqua deps_compat: missing [compat] for LinearAlgebra (deps) and Pkg (extras) — tracked in https://github.com/SciML/FastBroadcast.jl/issues/101
 end

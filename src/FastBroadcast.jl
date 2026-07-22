@@ -15,6 +15,15 @@ Threading dispatch type for `@..`. When passed as `thread = Threaded()`,
 enables Polyester-based multithreaded broadcasting. Using a type instead of
 `true` allows compile-time dispatch and prevents invalidations when
 Polyester is loaded (the `Serial` code path never references threaded methods).
+
+# Example
+```julia
+using FastBroadcast, Polyester
+
+destination = zeros(3)
+source = [1, 2, 3]
+@.. thread = Threaded() destination = source + 1
+```
 """
 struct Threaded end
 
@@ -24,6 +33,15 @@ struct Threaded end
 Threading dispatch type for `@..`. When passed as `thread = Serial()`,
 uses serial broadcasting (the default). Using a type instead of `false`
 allows compile-time dispatch.
+
+# Example
+```julia
+using FastBroadcast
+
+destination = zeros(3)
+source = [1, 2, 3]
+@.. thread = Serial() destination = source + 1
+```
 """
 struct Serial end
 
@@ -465,7 +483,7 @@ function fb_macro!(ex::Expr, threadarg, broadcastarg)
 end
 
 """
-    @.. [thread=false] [broadcast=false] expr
+    @.. [thread = false] [broadcast = false] expr
 
 `@..` turns `expr` into a broadcast-like expression, similar to `@.`.
 It additionally provides two optional keyword arguments:
@@ -482,6 +500,15 @@ It additionally provides two optional keyword arguments:
     `ArrayInterface.known_length(typeof(semi_static_axes(x,i))) == 1` will
     be broadcast. Note that this differs from base broadcasting, in that
     base broadcasting only supports `broadcast=true`.
+
+# Example
+```julia
+using FastBroadcast
+
+destination = zeros(3)
+source = [1, 2, 3]
+@.. destination = 2source + 1
+```
 """
 macro (..)(ex)
     ex isa Expr || return esc(ex)

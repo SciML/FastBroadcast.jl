@@ -32,22 +32,9 @@ const EI_KWARGS = (;
 )
 
 @testset "Aqua + ExplicitImports" begin
-    # deps_compat currently fails: no [compat] entry for the stdlib dep
-    # LinearAlgebra (deps) nor for the test extra Pkg (extras).
-    # Tracked in https://github.com/SciML/FastBroadcast.jl/issues/101
     run_qa(
         FastBroadcast;
-        aqua_kwargs = (; deps_compat = false),
         explicit_imports = true,
         ei_kwargs = EI_KWARGS,
     )
-    @test_broken false  # Aqua deps_compat: missing [compat] for LinearAlgebra (deps) and Pkg (extras) — tracked in https://github.com/SciML/FastBroadcast.jl/issues/101
-end
-
-@testset "JET" begin
-    # JET.test_package reports the threaded fast_materialize paths (from the
-    # FastBroadcastPolyesterExt extension) as missing methods because the
-    # weakdep extension is not loaded during report_package.
-    # Tracked in https://github.com/SciML/FastBroadcast.jl/issues/101
-    @test_broken false  # JET: 2 errors — fast_materialize_threaded!/fast_materialize_threaded missing (extension) — tracked in https://github.com/SciML/FastBroadcast.jl/issues/101
 end

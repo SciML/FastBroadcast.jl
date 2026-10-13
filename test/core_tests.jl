@@ -207,10 +207,19 @@ end
     @test_throws DimensionMismatch @.. A = B + FixedSizeMatrix(rand(1, 4))
     @test_throws DimensionMismatch @.. x = A
 
-    # zero-dimensional broadcasts are materialized to a scalar, as in Base
-    a0 = FixedSizeArray(fill(2.0))
-    @test !FastBroadcast.use_fast_broadcast(style(a0))
-    @test (@.. a0 + 1) === a0 .+ 1 === 3.0
-    @test (@.. x = a0 + 1) == fill(3.0, 4)
-    @test (@.. a0 = y[1] + 1)[] == y[1] + 1
+    # zero-dimensional broadcasts are materialized to a scalar, as in Base, and
+    # computed only once, as for zero-dimensional `Array`s
+    for a0 in (fill(2.0), FixedSizeArray(fill(2.0)))
+        @test FastBroadcast.use_fast_broadcast(style(a0))
+        ncalls = Ref(0)
+        g(a) = (ncalls[] += 1; a + 1)
+        @test (@.. g(a0)) === g.(a0) === 3.0
+        ncalls[] = 0
+        @test (@.. x = g(a0)) == fill(3.0, 4)
+        @test ncalls[] == 1
+        ncalls[] = 0
+        @test (@.. x = y + 2 * g(a0)) == y .+ 6
+        @test ncalls[] == 1
+        @test (@.. a0 = y[1] + 1)[] == y[1] + 1
+    end
 end

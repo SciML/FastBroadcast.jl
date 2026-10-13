@@ -189,15 +189,15 @@ end
 Whether `@..` evaluates a broadcast with the given style on its fast path rather than
 falling back to `Base.Broadcast.materialize`/`materialize!`.
 
-Defaults to `true` only for `DefaultArrayStyle{N}` with `N > 0`. Array types with a
-custom broadcast style that only controls the type of the output (e.g. `FixedSizeArray`)
-can opt in, provided that their elements can be read and written elementwise with
-`getindex`/`setindex!` and that `similar(bc, T)` returns a suitable destination. Styles
-of zero-dimensional broadcasts should not opt in: Base materializes them to a scalar.
+Defaults to `true` only for `DefaultArrayStyle`. Array types with a custom broadcast
+style that only controls the type of the output (e.g. `FixedSizeArray`) can opt in,
+provided that their elements can be read and written elementwise with
+`getindex`/`setindex!` and that `similar(bc, T)` returns a suitable destination.
+As in Base, broadcasts with a style `<: AbstractArrayStyle{0}` are materialized to a
+scalar, which is computed only once.
 """
 use_fast_broadcast(_) = false
 use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle}) = true
-use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle{0}}) = false
 
 # Legacy 4-arg fallback (old API compat)
 fast_materialize!(_, _, dst, x) = dst .= x
@@ -214,10 +214,12 @@ end
 Base.@propagate_inbounds function fast_materialize!(
         ::Serial, dst::A, bc::Broadcasted{S}
     ) where {S, A}
-    return if S === Base.Broadcast.DefaultArrayStyle{0}
-        fill!(dst, bc[1])
-    elseif use_fast_broadcast(S)
-        _fast_materialize!(dst, Val(indices_do_not_alias(A)), bc)
+    return if use_fast_broadcast(S)
+        if S <: Base.Broadcast.AbstractArrayStyle{0}
+            fill!(dst, bc[1])
+        else
+            _fast_materialize!(dst, Val(indices_do_not_alias(A)), bc)
+        end
     else
         materialize!(dst, bc)
     end
@@ -226,14 +228,16 @@ end
 Base.@propagate_inbounds function fast_materialize(
         ::Serial, bc::Broadcasted{S}
     ) where {S}
-    if S === Base.Broadcast.DefaultArrayStyle{0}
-        return only(bc)
-    elseif use_fast_broadcast(S)
-        fast_materialize!(
-            Serial(),
-            similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
-            bc
-        )
+    return if use_fast_broadcast(S)
+        if S <: Base.Broadcast.AbstractArrayStyle{0}
+            only(bc)
+        else
+            fast_materialize!(
+                Serial(),
+                similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
+                bc
+            )
+        end
     else
         materialize(bc)
     end
@@ -305,7 +309,7 @@ end
 
 
 _dim0(_) = false
-_dim0(::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{0}}) = true
+_dim0(::Base.Broadcast.Broadcasted{S}) where {S} = use_fast_broadcast(S) && S <: Base.Broadcast.AbstractArrayStyle{0}
 @inline function _broadcasted(f::F, args...) where {F}
     bc = Base.Broadcast.broadcasted(f, args...)
     return _dim0(bc) ? only(bc) : bc

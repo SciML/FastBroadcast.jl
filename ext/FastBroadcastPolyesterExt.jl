@@ -14,13 +14,15 @@ end
 Base.@propagate_inbounds function FastBroadcast.fast_materialize_threaded(
         bc::Broadcasted{S}
     ) where {S}
-    if S === Base.Broadcast.DefaultArrayStyle{0}
-        return only(bc)
-    elseif FastBroadcast.use_fast_broadcast(S)
-        FastBroadcast.fast_materialize_threaded!(
-            similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
-            bc
-        )
+    return if FastBroadcast.use_fast_broadcast(S)
+        if S <: Base.Broadcast.AbstractArrayStyle{0}
+            only(bc)
+        else
+            FastBroadcast.fast_materialize_threaded!(
+                similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
+                bc
+            )
+        end
     else
         materialize(bc)
     end

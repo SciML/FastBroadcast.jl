@@ -183,7 +183,18 @@ end
     return dst
 end
 
-# these are needed for `RecursiveArrayTools`'s fast broadcast extension
+"""
+    use_fast_broadcast(::Type{<:Base.Broadcast.BroadcastStyle})::Bool
+
+Whether `@..` evaluates a broadcast with the given style on its fast path rather than
+falling back to `Base.Broadcast.materialize`/`materialize!`.
+
+Defaults to `true` only for `DefaultArrayStyle{N}` with `N > 0`. Array types with a
+custom broadcast style that only controls the type of the output (e.g. `FixedSizeArray`)
+can opt in, provided that their elements can be read and written elementwise with
+`getindex`/`setindex!` and that `similar(bc, T)` returns a suitable destination. Styles
+of zero-dimensional broadcasts should not opt in: Base materializes them to a scalar.
+"""
 use_fast_broadcast(_) = false
 use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle}) = true
 use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle{0}}) = false
@@ -205,7 +216,7 @@ Base.@propagate_inbounds function fast_materialize!(
     ) where {S, A}
     return if S === Base.Broadcast.DefaultArrayStyle{0}
         fill!(dst, bc[1])
-    elseif S <: Base.Broadcast.DefaultArrayStyle
+    elseif use_fast_broadcast(S)
         _fast_materialize!(dst, Val(indices_do_not_alias(A)), bc)
     else
         materialize!(dst, bc)
@@ -217,7 +228,7 @@ Base.@propagate_inbounds function fast_materialize(
     ) where {S}
     if S === Base.Broadcast.DefaultArrayStyle{0}
         return only(bc)
-    elseif S <: Base.Broadcast.DefaultArrayStyle
+    elseif use_fast_broadcast(S)
         fast_materialize!(
             Serial(),
             similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),

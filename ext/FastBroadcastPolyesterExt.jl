@@ -16,7 +16,7 @@ Base.@propagate_inbounds function FastBroadcast.fast_materialize_threaded(
     ) where {S}
     if S === Base.Broadcast.DefaultArrayStyle{0}
         return only(bc)
-    elseif S <: Base.Broadcast.DefaultArrayStyle
+    elseif FastBroadcast.use_fast_broadcast(S)
         FastBroadcast.fast_materialize_threaded!(
             similar(bc, Base.Broadcast.combine_eltypes(bc.f, bc.args)),
             bc

@@ -21,15 +21,17 @@ using Static, ThreadTeams
 #   * ThreadTeams `nchunks` is documented API (the number of chunks a loop gets right now,
 #     used to split the last axis) but ThreadTeams declares nothing `public`.
 #   * FastBroadcast's own `fast_materialize`/`fast_materialize!`/`fast_materialize_threaded`/
-#     `fast_materialize_threaded!`/`_view` are the internal hooks its extensions exist to
-#     add methods to. An extension has no public spelling for the parent's dispatch points,
-#     so these stay ignored rather than being promoted to public API.
+#     `fast_materialize_threaded!`/`_view`/`_check_fast_materialize`/
+#     `_fast_materialize_block!` are the internal hooks and kernels its extensions exist
+#     to add methods to and to run. An extension has no public spelling for the parent's
+#     dispatch points, so these stay ignored rather than being promoted to public API.
 const EI_KWARGS = (;
     all_explicit_imports_are_public = (;
         ignore = (
-            :Broadcasted, :materialize, :materialize!,
+            :Broadcasted, :DefaultArrayStyle, :materialize, :materialize!,
             :flatten_tuples, :indices_do_not_alias, :Fix1,
             :_view, :fast_materialize, :fast_materialize!,
+            :_check_fast_materialize, :_fast_materialize_block!,
         ),
     ),
     all_qualified_accesses_are_public = (;

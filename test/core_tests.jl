@@ -1,5 +1,5 @@
 using FastBroadcast
-using Polyester  # loads FastBroadcastPolyesterExt
+using ThreadTeams  # loads FastBroadcastThreadTeamsExt
 using SparseArrays
 using Test
 
@@ -150,14 +150,14 @@ let v = rand(8), A = rand(4, 2), V = rand(8, 1), a = similar(v), b = similar(v)
     @test_throws DimensionMismatch @.. a += A
 end
 
-@testset "Polyester error hint (issue #91)" begin
-    # Run a fresh Julia process that loads FastBroadcast without Polyester,
+@testset "ThreadTeams error hint (issue #91)" begin
+    # Run a fresh Julia process that loads FastBroadcast without ThreadTeams,
     # trigger `@.. thread=true`, and check that the MethodError shows a hint
-    # pointing the user to `using Polyester`.
+    # pointing the user to `using ThreadTeams`.
     script = """
         push!(LOAD_PATH, $(repr(dirname(Base.active_project()))))
         using FastBroadcast
-        @assert Base.get_extension(FastBroadcast, :FastBroadcastPolyesterExt) === nothing
+        @assert Base.get_extension(FastBroadcast, :FastBroadcastThreadTeamsExt) === nothing
         xs = [1.0, 2.0, 3.0]
         try
             @.. thread=true sin(xs)
@@ -167,7 +167,7 @@ end
             io = IOBuffer()
             Base.showerror(io, err)
             msg = String(take!(io))
-            occursin("using Polyester", msg) || error("hint missing:\\n" * msg)
+            occursin("using ThreadTeams", msg) || error("hint missing:\\n" * msg)
         end
     """
     cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -e $script`

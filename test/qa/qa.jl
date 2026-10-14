@@ -1,9 +1,9 @@
 using SciMLTesting, FastBroadcast, Test
 
 # ExplicitImports only sees an extension module once its trigger package is loaded, so
-# load every weakdep here to bring FastBroadcastPolyesterExt and FastBroadcastStaticExt
+# load every weakdep here to bring FastBroadcastStaticExt and FastBroadcastThreadTeamsExt
 # into the set of scanned submodules.
-using Polyester, Static
+using Static, ThreadTeams
 
 # ExplicitImports ignore-lists (per-check, keyed by check short name). Every entry is
 # a non-public name of a dependency that FastBroadcast must use and that has no public
@@ -18,6 +18,8 @@ using Polyester, Static
 #     supported Julia versions).
 #   * ArrayInterface `indices_do_not_alias`/`flatten_tuples` are non-public in ArrayInterface
 #     (confirmed: not exported, not `public`-declared) with no public replacement.
+#   * ThreadTeams `nchunks` is documented API (the number of chunks a loop gets right now,
+#     used to split the last axis) but ThreadTeams declares nothing `public`.
 #   * FastBroadcast's own `fast_materialize`/`fast_materialize!`/`fast_materialize_threaded`/
 #     `fast_materialize_threaded!`/`_view` are the internal hooks its extensions exist to
 #     add methods to. An extension has no public spelling for the parent's dispatch points,
@@ -37,7 +39,7 @@ const EI_KWARGS = (;
             :Experimental, :RefValue, :Slice, :broadcasted,
             :check_broadcast_shape, :combine_eltypes, :front,
             :get_extension, :maybeview, :register_error_hint, :tail,
-            :fast_materialize_threaded, :fast_materialize_threaded!,
+            :nchunks, :fast_materialize_threaded, :fast_materialize_threaded!,
         ),
     ),
 )
@@ -45,7 +47,7 @@ const EI_KWARGS = (;
 # ExplicitImports silently skips an extension that fails to load, so assert the
 # extension modules actually exist rather than trusting a green run_qa.
 @testset "Extensions loaded" begin
-    for ext in (:FastBroadcastPolyesterExt, :FastBroadcastStaticExt)
+    for ext in (:FastBroadcastStaticExt, :FastBroadcastThreadTeamsExt)
         @test Base.get_extension(FastBroadcast, ext) !== nothing
     end
 end

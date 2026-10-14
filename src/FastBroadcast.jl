@@ -12,13 +12,15 @@ export @.., Threaded, Serial
     Threaded()
 
 Threading dispatch type for `@..`. When passed as `thread = Threaded()`,
-enables Polyester-based multithreaded broadcasting. Using a type instead of
-`true` allows compile-time dispatch and prevents invalidations when
-Polyester is loaded (the `Serial` code path never references threaded methods).
+enables multithreaded broadcasting on the persistent worker team of
+[ThreadTeams.jl](https://github.com/vchuravy/ThreadTeams.jl) (OhMyThreads.jl's
+`tforeach` with the `TeamScheduler`). Using a type instead of `true` allows
+compile-time dispatch and prevents invalidations when ThreadTeams is loaded
+(the `Serial` code path never references threaded methods).
 
 # Example
 ```julia
-using FastBroadcast, Polyester
+using FastBroadcast, ThreadTeams
 
 destination = zeros(3)
 source = [1, 2, 3]
@@ -192,7 +194,7 @@ use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle{0}}) = false
 fast_materialize!(_, _, dst, x) = dst .= x
 
 # Serial dispatch — the primary path. Never references fast_materialize_threaded!,
-# so loading Polyester cannot invalidate any code compiled via Serial.
+# so loading ThreadTeams cannot invalidate any code compiled via Serial.
 @inline fast_materialize!(::Serial, dst, x::Number) = fill!(dst, x)
 @inline function fast_materialize!(::Serial, dst, x::AbstractArray)
     Base.Broadcast.check_broadcast_shape(size(dst), size(x))
@@ -263,29 +265,29 @@ end
 """
     fast_materialize_threaded(bc)
 
-Threaded version of `fast_materialize`. Requires the Polyester.jl package to be loaded
-(which activates the FastBroadcastPolyesterExt extension).
+Threaded version of `fast_materialize`. Requires the ThreadTeams.jl package to be loaded
+(which activates the FastBroadcastThreadTeamsExt extension).
 """
 function fast_materialize_threaded end
 
 """
     fast_materialize_threaded!(dst, bc)
 
-Threaded in-place version of `fast_materialize!`. Requires the Polyester.jl package
-to be loaded (which activates the FastBroadcastPolyesterExt extension).
+Threaded in-place version of `fast_materialize!`. Requires the ThreadTeams.jl package
+to be loaded (which activates the FastBroadcastThreadTeamsExt extension).
 """
 function fast_materialize_threaded! end
 
 function __init__()
     return Base.Experimental.register_error_hint(MethodError) do io, exc, _argtypes, _kwargs
         if exc.f === fast_materialize_threaded || exc.f === fast_materialize_threaded!
-            if Base.get_extension(@__MODULE__, :FastBroadcastPolyesterExt) === nothing
+            if Base.get_extension(@__MODULE__, :FastBroadcastThreadTeamsExt) === nothing
                 print(
                     io,
                     "\n\n`@.. thread=true` (and `FastBroadcast.fast_materialize_threaded`/",
-                    "`fast_materialize_threaded!`) requires the Polyester.jl package to be loaded. ",
-                    "Run `using Polyester` (or `import Polyester`) to load the ",
-                    "FastBroadcastPolyesterExt extension."
+                    "`fast_materialize_threaded!`) requires the ThreadTeams.jl package to be loaded. ",
+                    "Run `using ThreadTeams` (or `import ThreadTeams`) to load the ",
+                    "FastBroadcastThreadTeamsExt extension."
                 )
             end
         end
@@ -488,10 +490,11 @@ end
 `@..` turns `expr` into a broadcast-like expression, similar to `@.`.
 It additionally provides two optional keyword arguments:
 
-- thread: Defaults to `false`. Controls multithreading via Polyester.jl.
+- thread: Defaults to `false`. Controls multithreading via ThreadTeams.jl
+    (OhMyThreads.jl's `tforeach` on ThreadTeams' `TeamScheduler`).
     Accepts `Serial()`, `Threaded()`, `false`, or `true`. Using the type-based
     `Serial()`/`Threaded()` is preferred as it enables compile-time dispatch and
-    avoids invalidations when Polyester is loaded. Requires `using Polyester`
+    avoids invalidations when ThreadTeams is loaded. Requires `using ThreadTeams`
     for threaded execution.
     This only works if broadcast=false.
 - broadcast: Defaults to `false`. If `true`, it will broadcast axes with dynamic

@@ -25,5 +25,5 @@ jobs:
         with:
           julia-version: ${{ matrix.version }}
           script: "benchmark/benchmarks.jl"
-          extra-pkgs: "StableRNGs,Polyester"
+          extra-pkgs: "StableRNGs,ThreadTeams"
           job-summary: true

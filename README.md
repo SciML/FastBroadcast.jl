@@ -49,11 +49,15 @@ julia> @btime fast_foo9($a, $b, $c, $d, $e, $f, $g, $h, $i);
 ## Threading
 
 The macro `@..` accepts a keyword argument `thread` to control whether the
-broadcast should use multithreading via [Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl)
-(disabled by default). Start Julia with multiple threads to benefit from this.
+broadcast should use multithreading via [ThreadTeams.jl](https://github.com/vchuravy/ThreadTeams.jl)
+(disabled by default): the last axis of the destination is split into one contiguous chunk
+per thread, and the chunks run as an [OhMyThreads.jl](https://github.com/JuliaFolds2/OhMyThreads.jl)
+`tforeach` on ThreadTeams' persistent worker team (`TeamScheduler`). Start Julia with
+multiple threads to benefit from this, and load `ThreadTeams` to activate the threaded
+code path.
 
 ```julia
-julia> using FastBroadcast, Polyester
+julia> using FastBroadcast, ThreadTeams
 
 julia> function foo_serial!(dest, src)
            @.. thread=false dest = log(src)
@@ -78,7 +82,7 @@ The `thread` argument accepts `true`/`false` or the exported types
 `Serial()`/`Threaded()`. When the threading choice is stored in a
 type-parameterized struct (e.g. an algorithm configuration), using
 `Serial()`/`Threaded()` enables compile-time dispatch and avoids
-invalidations when Polyester is loaded:
+invalidations when ThreadTeams is loaded:
 
 ```julia
 julia> function foo_maybe_parallel!(dest, src, thread)

@@ -1,5 +1,5 @@
 using FastBroadcast, BenchmarkTools
-using StableRNGs, Polyester
+using StableRNGs, ThreadTeams
 
 const SUITE = BenchmarkGroup()
 const rng = StableRNG(123)

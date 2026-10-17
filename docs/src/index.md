@@ -20,12 +20,15 @@ broadcast happens when the expansion of singleton dimensions occurs.
 
 The macro [`@..`](@ref) accepts a keyword argument `thread` to control whether the
 broadcast should use multithreading via
-[Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl) (disabled by default).
-Start Julia with multiple threads to benefit from this, and load `Polyester` to
+[ThreadTeams.jl](https://github.com/vchuravy/ThreadTeams.jl) (disabled by default):
+the last axis of the destination is split into one contiguous chunk per thread, and
+the chunks run as an [OhMyThreads.jl](https://github.com/JuliaFolds2/OhMyThreads.jl)
+`tforeach` on ThreadTeams' persistent worker team (`TeamScheduler`).
+Start Julia with multiple threads to benefit from this, and load `ThreadTeams` to
 activate the threaded code path.
 
 ```julia
-using FastBroadcast, Polyester
+using FastBroadcast, ThreadTeams
 
 function foo_parallel!(dest, src)
     @.. thread = true dest = log(src)
@@ -36,6 +39,6 @@ The `thread` argument accepts `true`/`false` or the exported types
 [`Serial`](@ref)`()`/[`Threaded`](@ref)`()`. When the threading choice is stored
 in a type-parameterized struct (e.g. an algorithm configuration), using
 `Serial()`/`Threaded()` enables compile-time dispatch and avoids invalidations
-when Polyester is loaded.
+when ThreadTeams is loaded.
 
 See the [API](@ref) page for the full public interface.

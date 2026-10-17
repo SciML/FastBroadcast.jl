@@ -1,5 +1,5 @@
 using FastBroadcast
-using Polyester  # loads FastBroadcastPolyesterExt
+using ThreadTeams  # loads FastBroadcastThreadTeamsExt
 using SparseArrays
 using Test
 
@@ -136,6 +136,42 @@ end
     end
 end
 
+@testset "Threaded blocks" begin
+    # The threaded path splits the last axis into blocks and runs the serial kernel on
+    # the block's indices into the original arrays; every layout the serial path handles
+    # must give the same result.
+    A = rand(5, 7)
+    B = rand(5, 7)
+    v = rand(5)
+    wt = transpose(rand(7))
+    C = similar(A)
+    @test (@.. thread = true C = A * B + sin(A)) == (@.. A * B + sin(A))
+    @test (@.. thread = true C = A + v) == A .+ v                      # Cartesian path
+    @test (@.. thread = true C = A + wt) == A .+ wt
+    @test (@.. thread = true C = 2A + 1) == 2A .+ 1
+    @test (@.. thread = true A + v) == A .+ v                          # out of place
+    @test (@.. thread = true C = A) == A
+    @test (@.. thread = true @view(C[:, 2:3]) = @view(A[:, 2:3]) + 1) == A[:, 2:3] .+ 1
+    T = rand(3, 4, 5)
+    U = similar(T)
+    @test (@.. thread = true U = T + abs2(T)) == T .+ abs2.(T)
+    @test (@.. thread = true U = T + v[1:3]) == T .+ v[1:3]
+    x = rand(3)                                                       # 1-D, few elements
+    @test (@.. thread = true x = x * 2) == x
+    y = similar(x)
+    @test (@.. thread = true y = exp(x)) == exp.(x)
+    M = rand(10, 1)                                                   # last axis of length 1
+    @test (@.. thread = true M = M + 1) == M
+    d0 = fill(0.0)                                                    # 0-dimensional
+    @test (@.. thread = true d0 = 1.0 + 2.0)[] == 3.0
+    w = rand(7)
+    @test_throws DimensionMismatch @.. thread = true C = A + w
+    @test_throws DimensionMismatch @.. thread = true C = A + rand(5, 8)
+    sx = sparse([1, 2, 0, 4])                                         # non-default style
+    sy = sparse([1, 0, 0, 4])
+    @test (@.. thread = true sy = sx + sy) == [2, 2, 0, 8]
+end
+
 let ex = macroexpand(
         @__MODULE__,
         :(@.. broadcast = false @view(J[idxs]) = @view(J[idxs]) - inv_alpha),
@@ -150,14 +186,14 @@ let v = rand(8), A = rand(4, 2), V = rand(8, 1), a = similar(v), b = similar(v)
     @test_throws DimensionMismatch @.. a += A
 end
 
-@testset "Polyester error hint (issue #91)" begin
-    # Run a fresh Julia process that loads FastBroadcast without Polyester,
+@testset "ThreadTeams error hint (issue #91)" begin
+    # Run a fresh Julia process that loads FastBroadcast without ThreadTeams,
     # trigger `@.. thread=true`, and check that the MethodError shows a hint
-    # pointing the user to `using Polyester`.
+    # pointing the user to `using ThreadTeams`.
     script = """
         push!(LOAD_PATH, $(repr(dirname(Base.active_project()))))
         using FastBroadcast
-        @assert Base.get_extension(FastBroadcast, :FastBroadcastPolyesterExt) === nothing
+        @assert Base.get_extension(FastBroadcast, :FastBroadcastThreadTeamsExt) === nothing
         xs = [1.0, 2.0, 3.0]
         try
             @.. thread=true sin(xs)
@@ -167,7 +203,7 @@ end
             io = IOBuffer()
             Base.showerror(io, err)
             msg = String(take!(io))
-            occursin("using Polyester", msg) || error("hint missing:\\n" * msg)
+            occursin("using ThreadTeams", msg) || error("hint missing:\\n" * msg)
         end
     """
     cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -e $script`

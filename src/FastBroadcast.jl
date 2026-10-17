@@ -12,13 +12,15 @@ export @.., Threaded, Serial
     Threaded()
 
 Threading dispatch type for `@..`. When passed as `thread = Threaded()`,
-enables Polyester-based multithreaded broadcasting. Using a type instead of
-`true` allows compile-time dispatch and prevents invalidations when
-Polyester is loaded (the `Serial` code path never references threaded methods).
+enables multithreaded broadcasting on the persistent worker team of
+[ThreadTeams.jl](https://github.com/vchuravy/ThreadTeams.jl) (OhMyThreads.jl's
+`tforeach` with the `TeamScheduler`). Using a type instead of `true` allows
+compile-time dispatch and prevents invalidations when ThreadTeams is loaded
+(the `Serial` code path never references threaded methods).
 
 # Example
 ```julia
-using FastBroadcast, Polyester
+using FastBroadcast, ThreadTeams
 
 destination = zeros(3)
 source = [1, 2, 3]
@@ -147,39 +149,66 @@ end
     return @inbounds A[inds...]
 end
 
-@inline function __fast_materialize!(dst, ::Val{true}, bc::Broadcasted, ::Val{false})
-    @simd ivdep for i in eachindex(dst)
+# The kernels: `dst[i] = bc[i]` for every `i` in `inds`, the linear indices or the
+# `CartesianIndices` of the whole of `dst`, or of a block of it (see
+# `_fast_materialize_block!`).
+@inline function _materialize_inds!(dst, ::Val{true}, bc::Broadcasted, inds)
+    @simd ivdep for i in inds
         @inbounds dst[i] = _fastindex(bc, i)
     end
     return dst
 end
-@inline function __fast_materialize!(dst, ::Val{true}, bc::Broadcasted, ::Val{true})
-    @simd ivdep for i in CartesianIndices(dst)
+@inline function _materialize_inds!(dst, ::Val{false}, bc::Broadcasted, inds)
+    for i in inds
         @inbounds dst[i] = _fastindex(bc, i)
     end
     return dst
 end
-@inline function __fast_materialize!(dst, ::Val{false}, bc::Broadcasted, ::Val{false})
-    for i in eachindex(dst)
-        @inbounds dst[i] = _fastindex(bc, i)
-    end
-    return dst
-end
-@inline function __fast_materialize!(dst, ::Val{false}, bc::Broadcasted, ::Val{true})
-    for i in CartesianIndices(dst)
-        @inbounds dst[i] = _fastindex(bc, i)
-    end
-    return dst
-end
+@inline __fast_materialize!(dst, noalias::Val, bc::Broadcasted, ::Val{false}) =
+    _materialize_inds!(dst, noalias, bc, eachindex(dst))
+@inline __fast_materialize!(dst, noalias::Val, bc::Broadcasted, ::Val{true}) =
+    _materialize_inds!(dst, noalias, bc, CartesianIndices(dst))
 
-@inline function _fast_materialize!(dst, ::Val{NOALIAS}, bc::Broadcasted) where {NOALIAS}
-    dstax = semi_static_axes(dst)
+@inline function _check_fast_materialize(dst, bc::Broadcasted)
     _no_dyn_broadcast = check_no_dyn_broadcast(bc, semi_static_axes(dst))
     @boundscheck _no_dyn_broadcast || throw(
         DimensionMismatch("Some axes are not equal, or feature a dynamic broadcast!"),
     )
-    _islinear = broadcast_islinear(bc, dstax)
+    return nothing
+end
+
+@inline function _fast_materialize!(dst, ::Val{NOALIAS}, bc::Broadcasted) where {NOALIAS}
+    _check_fast_materialize(dst, bc)
+    _islinear = broadcast_islinear(bc, semi_static_axes(dst))
     __fast_materialize!(dst, Val(NOALIAS), bc, Val(_islinear))
+    return dst
+end
+
+# The indices of the block of `dst` whose last-axis indices are `r`. In linear indexing
+# the block is contiguous (column-major), so it is a `UnitRange`.
+@inline function _block_indices(dst, ::Val{false}, r)
+    isempty(r) && return 1:0
+    ax = axes(dst)
+    L = LinearIndices(dst)
+    lo = @inbounds L[map(first, Base.front(ax))..., first(r)]
+    hi = @inbounds L[map(last, Base.front(ax))..., last(r)]
+    return lo:hi
+end
+@inline _block_indices(dst, ::Val{true}, r) = CartesianIndices((Base.front(axes(dst))..., r))
+
+"""
+    _fast_materialize_block!(dst, bc, r)
+
+Materialize `bc` into the block of `dst` whose indices in the last axis are `r`, without
+checking the axes (the caller does so once with `_check_fast_materialize`). This is what
+the threaded path runs per chunk: the original arrays are indexed with the block's linear
+or Cartesian indices, so the kernel is the serial one, with a single induction variable.
+(A `view` per chunk instead costs one induction variable per array in the inner loop,
+plus their spills around calls, about 40% more instructions.)
+"""
+@inline function _fast_materialize_block!(dst::A, bc::Broadcasted, r) where {A}
+    _islinear = Val(broadcast_islinear(bc, semi_static_axes(dst)))
+    _materialize_inds!(dst, Val(indices_do_not_alias(A)), bc, _block_indices(dst, _islinear, r))
     return dst
 end
 
@@ -192,7 +221,7 @@ use_fast_broadcast(::Type{<:Base.Broadcast.DefaultArrayStyle{0}}) = false
 fast_materialize!(_, _, dst, x) = dst .= x
 
 # Serial dispatch — the primary path. Never references fast_materialize_threaded!,
-# so loading Polyester cannot invalidate any code compiled via Serial.
+# so loading ThreadTeams cannot invalidate any code compiled via Serial.
 @inline fast_materialize!(::Serial, dst, x::Number) = fill!(dst, x)
 @inline function fast_materialize!(::Serial, dst, x::AbstractArray)
     Base.Broadcast.check_broadcast_shape(size(dst), size(x))
@@ -263,29 +292,29 @@ end
 """
     fast_materialize_threaded(bc)
 
-Threaded version of `fast_materialize`. Requires the Polyester.jl package to be loaded
-(which activates the FastBroadcastPolyesterExt extension).
+Threaded version of `fast_materialize`. Requires the ThreadTeams.jl package to be loaded
+(which activates the FastBroadcastThreadTeamsExt extension).
 """
 function fast_materialize_threaded end
 
 """
     fast_materialize_threaded!(dst, bc)
 
-Threaded in-place version of `fast_materialize!`. Requires the Polyester.jl package
-to be loaded (which activates the FastBroadcastPolyesterExt extension).
+Threaded in-place version of `fast_materialize!`. Requires the ThreadTeams.jl package
+to be loaded (which activates the FastBroadcastThreadTeamsExt extension).
 """
 function fast_materialize_threaded! end
 
 function __init__()
     return Base.Experimental.register_error_hint(MethodError) do io, exc, _argtypes, _kwargs
         if exc.f === fast_materialize_threaded || exc.f === fast_materialize_threaded!
-            if Base.get_extension(@__MODULE__, :FastBroadcastPolyesterExt) === nothing
+            if Base.get_extension(@__MODULE__, :FastBroadcastThreadTeamsExt) === nothing
                 print(
                     io,
                     "\n\n`@.. thread=true` (and `FastBroadcast.fast_materialize_threaded`/",
-                    "`fast_materialize_threaded!`) requires the Polyester.jl package to be loaded. ",
-                    "Run `using Polyester` (or `import Polyester`) to load the ",
-                    "FastBroadcastPolyesterExt extension."
+                    "`fast_materialize_threaded!`) requires the ThreadTeams.jl package to be loaded. ",
+                    "Run `using ThreadTeams` (or `import ThreadTeams`) to load the ",
+                    "FastBroadcastThreadTeamsExt extension."
                 )
             end
         end
@@ -488,10 +517,11 @@ end
 `@..` turns `expr` into a broadcast-like expression, similar to `@.`.
 It additionally provides two optional keyword arguments:
 
-- thread: Defaults to `false`. Controls multithreading via Polyester.jl.
+- thread: Defaults to `false`. Controls multithreading via ThreadTeams.jl
+    (OhMyThreads.jl's `tforeach` on ThreadTeams' `TeamScheduler`).
     Accepts `Serial()`, `Threaded()`, `false`, or `true`. Using the type-based
     `Serial()`/`Threaded()` is preferred as it enables compile-time dispatch and
-    avoids invalidations when Polyester is loaded. Requires `using Polyester`
+    avoids invalidations when ThreadTeams is loaded. Requires `using ThreadTeams`
     for threaded execution.
     This only works if broadcast=false.
 - broadcast: Defaults to `false`. If `true`, it will broadcast axes with dynamic

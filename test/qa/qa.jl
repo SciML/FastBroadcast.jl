@@ -1,9 +1,9 @@
 using SciMLTesting, FastBroadcast, Test
 
 # ExplicitImports only sees an extension module once its trigger package is loaded, so
-# load every weakdep here to bring FastBroadcastPolyesterExt and FastBroadcastStaticExt
-# into the set of scanned submodules.
-using Polyester, Static
+# load every weakdep here to bring FastBroadcastPolyesterExt, FastBroadcastStaticExt, and
+# FixedSizeArraysExt into the set of scanned submodules.
+using FixedSizeArrays, Polyester, Static
 
 # ExplicitImports ignore-lists (per-check, keyed by check short name). Every entry is
 # a non-public name of a dependency that FastBroadcast must use and that has no public
@@ -18,9 +18,11 @@ using Polyester, Static
 #     supported Julia versions).
 #   * ArrayInterface `indices_do_not_alias`/`flatten_tuples` are non-public in ArrayInterface
 #     (confirmed: not exported, not `public`-declared) with no public replacement.
+#   * FixedSizeArrays `FixedSizeArrayBroadcastStyle` is the non-public style that
+#     FixedSizeArraysExt opts into the fast path.
 #   * FastBroadcast's own `fast_materialize`/`fast_materialize!`/`fast_materialize_threaded`/
-#     `fast_materialize_threaded!`/`_view` are the internal hooks its extensions exist to
-#     add methods to. An extension has no public spelling for the parent's dispatch points,
+#     `fast_materialize_threaded!`/`_view`/`use_fast_broadcast` are the internal hooks its
+#     extensions exist to add methods to. An extension has no public spelling for the parent's dispatch points,
 #     so these stay ignored rather than being promoted to public API.
 const EI_KWARGS = (;
     all_explicit_imports_are_public = (;
@@ -38,6 +40,7 @@ const EI_KWARGS = (;
             :check_broadcast_shape, :combine_eltypes, :front,
             :get_extension, :maybeview, :register_error_hint, :tail,
             :fast_materialize_threaded, :fast_materialize_threaded!,
+            :FixedSizeArrayBroadcastStyle, :use_fast_broadcast,
         ),
     ),
 )
@@ -45,7 +48,7 @@ const EI_KWARGS = (;
 # ExplicitImports silently skips an extension that fails to load, so assert the
 # extension modules actually exist rather than trusting a green run_qa.
 @testset "Extensions loaded" begin
-    for ext in (:FastBroadcastPolyesterExt, :FastBroadcastStaticExt)
+    for ext in (:FastBroadcastPolyesterExt, :FastBroadcastStaticExt, :FixedSizeArraysExt)
         @test Base.get_extension(FastBroadcast, ext) !== nothing
     end
 end

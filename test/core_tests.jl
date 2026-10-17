@@ -1,4 +1,5 @@
 using FastBroadcast
+using FixedSizeArrays  # loads FixedSizeArraysExt
 using Polyester  # loads FastBroadcastPolyesterExt
 using SparseArrays
 using Test
@@ -172,4 +173,53 @@ end
     """
     cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -e $script`
     @test success(pipeline(cmd; stdout = stdout, stderr = stderr))
+end
+
+@testset "FixedSizeArrays (issue #126)" begin
+    style(x) = typeof(Base.BroadcastStyle(typeof(x)))
+
+    x, y, z = FixedSizeVector(zeros(4)), FixedSizeVector(rand(4)), FixedSizeVector(rand(4))
+    @test FastBroadcast.use_fast_broadcast(style(x))
+    @test (@.. x = y + 0.5 * z) == y .+ 0.5 .* z
+    @test (@.. thread = true x = y - z) == y .- z
+
+    # mixed with `Array`s
+    v = rand(4)
+    @test (@.. x = y * v) == y .* v
+    w = zeros(4)
+    @test (@.. w = y + v) == y .+ v
+
+    # out-of-place
+    r = @.. y + 2 * z
+    @test r isa FixedSizeVector{Float64}
+    @test r == y .+ 2 .* z
+    r = @.. thread = true y + 2 * z
+    @test r isa FixedSizeVector{Float64}
+    @test r == y .+ 2 .* z
+
+    # matrices, including broadcasting of vectors and transposed vectors
+    A, B = FixedSizeMatrix(zeros(3, 4)), FixedSizeMatrix(rand(3, 4))
+    c, d = FixedSizeVector(rand(3)), transpose(FixedSizeVector(rand(4)))
+    @test (@.. A = B + c * d) == B .+ c .* d
+    @test (@.. B * c) == B .* c
+
+    # as for `Array`s, dynamic broadcasts are not supported
+    @test_throws DimensionMismatch @.. A = B + FixedSizeMatrix(rand(1, 4))
+    @test_throws DimensionMismatch @.. x = A
+
+    # zero-dimensional broadcasts are materialized to a scalar, as in Base, and
+    # computed only once, as for zero-dimensional `Array`s
+    for a0 in (fill(2.0), FixedSizeArray(fill(2.0)))
+        @test FastBroadcast.use_fast_broadcast(style(a0))
+        ncalls = Ref(0)
+        g(a) = (ncalls[] += 1; a + 1)
+        @test (@.. g(a0)) === g.(a0) === 3.0
+        ncalls[] = 0
+        @test (@.. x = g(a0)) == fill(3.0, 4)
+        @test ncalls[] == 1
+        ncalls[] = 0
+        @test (@.. x = y + 2 * g(a0)) == y .+ 6
+        @test ncalls[] == 1
+        @test (@.. a0 = y[1] + 1)[] == y[1] + 1
+    end
 end

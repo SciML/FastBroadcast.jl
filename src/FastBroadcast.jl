@@ -111,7 +111,7 @@ check_no_dyn_broadcast(::Union{Number, Base.RefValue}, ::Tuple{Vararg{Any, N}}) 
     return _rall(_rmap(axismatch, subax, subbx))
 end
 
-@inline function check_no_dyn_broadcast(bc::Broadcasted, ax::Tuple{Vararg{Any, N}}) where {N}
+Base.@constprop :none @inline function check_no_dyn_broadcast(bc::Broadcasted, ax::Tuple{Vararg{Any, N}}) where {N}
     return _rall(_rmap(check_no_dyn_broadcast, bc.args, ntuple(Returns(ax), Val(length(bc.args)))))
 end
 
@@ -137,7 +137,7 @@ end
 @inline _fastindex(b::Tuple{X}, _) where {X} = only(b)
 @inline _fastindex(b::Base.RefValue, _) = b[]
 @inline _fastindex(b::Tuple{X, Y, Vararg}, i) where {X, Y} = @inbounds b[i]
-@inline _fastindex(b::Broadcasted, i) = b.f(_rmap(_fastindex, b.args, ntuple(Returns(i), length(b.args)))...)
+Base.@constprop :none @inline _fastindex(b::Broadcasted, i) = b.f(_rmap(_fastindex, b.args, ntuple(Returns(i), length(b.args)))...)
 @inline function _fastindex(A, i)
     i isa Int && return @inbounds A[i]
     axs = semi_static_axes(A)
@@ -172,7 +172,9 @@ end
     return dst
 end
 
-@inline function _fast_materialize!(dst, ::Val{NOALIAS}, bc::Broadcasted) where {NOALIAS}
+# Constants in a `Broadcasted` cannot change these result types, but each distinct
+# constant set would be const-propagated again; the inlined code is the same without it.
+Base.@constprop :none @inline function _fast_materialize!(dst, ::Val{NOALIAS}, bc::Broadcasted) where {NOALIAS}
     dstax = semi_static_axes(dst)
     _no_dyn_broadcast = check_no_dyn_broadcast(bc, semi_static_axes(dst))
     @boundscheck _no_dyn_broadcast || throw(
